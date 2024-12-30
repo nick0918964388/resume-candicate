@@ -1,109 +1,147 @@
 import { supabase } from '../supabase';
 import { extractTextFromPDF } from './analysis';
 
-export async function uploadResume(file: File) {
+export async function uploadResume(file: File, projectId: string) {
   try {
     console.log('開始上傳文件:', file.name);
 
-    // 首先提取 PDF 文本
+    // 檢查是否已存在相同檔名的履歷，並生成新檔名
+    const { data: existingFiles } = await supabase
+      .from('resume')
+      .select('resume_name')
+      .eq('resume_name', file.name);
+
+    let finalFileName = file.name;
+    if (existingFiles && existingFiles.length > 0) {
+      // 如果檔名已存在，在檔名後加上序號
+      const nameWithoutExt = file.name.replace(/\.[^/.]+$/, "");
+      const ext = file.name.split('.').pop();
+      let counter = 1;
+      
+      // 持續檢查直到找到可用的檔名
+      while (true) {
+        const newFileName = `${nameWithoutExt} (${counter}).${ext}`;
+        const { data: checkFiles } = await supabase
+          .from('resume')
+          .select('resume_name')
+          .eq('resume_name', newFileName);
+        
+        if (!checkFiles || checkFiles.length === 0) {
+          finalFileName = newFileName;
+          break;
+        }
+        counter++;
+      }
+    }
+
+    // 提取 PDF 文本
     console.log('提取 PDF 文本...');
     const fileUrl = URL.createObjectURL(file);
-    const resumeText = await extractTextFromPDF(fileUrl);
-    URL.revokeObjectURL(fileUrl);
+    let resumeText = '';
+    try {
+      resumeText = await extractTextFromPDF(fileUrl);
+    } catch (error) {
+      console.error('PDF 文本提取錯誤:', error);
+      throw new Error('PDF 文本提取失敗，請確保文件內容可以正確讀取');
+    } finally {
+      URL.revokeObjectURL(fileUrl);
+    }
 
-    // 生成唯一的文件名
+    // 確保文本不為空
+    if (!resumeText.trim()) {
+      throw new Error('無法從 PDF 中提取有效文本，請確保文件包含可讀取的文字內容');
+    }
+
+    // 文本清理和驗證
+    resumeText = resumeText
+      .replace(/[\x00-\x08\x0B\x0C\x0E-\x1F]/g, '')  // 保留換行符
+      .replace(/[\uFFFD\uFFFE\uFFFF]/g, '')
+      .trim();
+
+    // 添加基本文本驗證
+    if (resumeText.length < 10) { // 假設有效的履歷至少應該有 10 個字符
+      throw new Error('提取的文本內容過少，請確保 PDF 包含足夠的文字內容');
+    }
+
+    // 生成唯一的存儲文件名
     const timestamp = new Date().getTime();
-    const fileName = `${timestamp}-${file.name}`;
-    console.log('生成的文件名:', fileName);
+    const displayFileName = finalFileName;  // 保持原始檔名用於顯示
+    const storageFileName = `${projectId}/${timestamp}-${finalFileName}`;  // 實際儲存路徑
 
     // 上傳文件到 Supabase Storage
-    console.log('正在上傳到 Storage...');
     const { data: storageData, error: storageError } = await supabase.storage
       .from('resumes')
-      .upload(fileName, file, {
+      .upload(storageFileName, file, {
         cacheControl: '3600',
         upsert: false
       });
 
-    if (storageError) {
-      console.error('Storage 上傳錯誤:', storageError);
-      throw new Error(`Storage 上傳失敗: ${storageError.message}`);
-    }
-
-    console.log('Storage 上傳成功:', storageData);
+    if (storageError) throw storageError;
 
     // 獲取文件的公共URL
     const { data: { publicUrl } } = supabase.storage
       .from('resumes')
-      .getPublicUrl(fileName);
-
-    console.log('文件公共URL:', publicUrl);
+      .getPublicUrl(storageFileName);
 
     // 將文件信息保存到數據庫
-    console.log('正在保存到數據庫...');
-    const { data: resumeData, error: dbError } = await supabase
+    const { data: resumeData, error: insertError } = await supabase
       .from('resume')
-      .insert([
-        {
-          resume_name: file.name,
-          file_path: fileName,
-          file_url: publicUrl,
-          file_size: file.size,
-          resume_text: resumeText, // 保存提取的文本
-          created_at: new Date().toISOString(),
-        },
-      ])
+      .insert({
+        resume_name: displayFileName,  // 使用原始檔名
+        file_path: storageFileName,    // 使用完整儲存路徑
+        display_name: file.name,       // 新增：保存原始檔名
+        file_url: publicUrl,
+        project_id: projectId,
+        file_size: file.size,
+        resume_text: resumeText,
+        created_at: new Date().toISOString(),
+      })
       .select()
       .single();
 
-    if (dbError) {
-      console.error('數據庫保存錯誤:', dbError);
-      // 如果數據庫保存失敗，刪除已上傳的文件
-      await supabase.storage
-        .from('resumes')
-        .remove([fileName]);
-      throw new Error(`數據庫保存失敗: ${dbError.message}`);
+    if (insertError) {
+      console.error('數據庫錯誤:', insertError);
+      throw new Error('保存履歷資料失敗: ' + insertError.message);
     }
 
-    console.log('數據庫保存成功:', resumeData);
     return resumeData;
+
   } catch (error) {
-    console.error('上傳過程中發生錯誤:', error);
-    throw error;
+    console.error('上傳失敗:', error);
+    if (error instanceof Error) {
+      throw new Error(error.message);
+    } else if (typeof error === 'object' && error !== null) {
+      throw new Error(JSON.stringify(error));
+    } else {
+      throw new Error('上傳過程中發生未知錯誤');
+    }
   }
 }
 
 export async function deleteResume(filePath: string) {
   try {
-    console.log('開始刪除文件:', filePath);
-
     // 從存儲中刪除文件
     const { error: storageError } = await supabase.storage
       .from('resumes')
       .remove([filePath]);
 
     if (storageError) {
-      console.error('Storage 刪除錯誤:', storageError);
-      throw new Error(`Storage 刪除失敗: ${storageError.message}`);
+      throw new Error(`無法刪除檔案: ${storageError.message}`);
     }
-
-    console.log('Storage 刪除成功');
 
     // 從數據庫中刪除記錄
     const { error: dbError } = await supabase
       .from('resume')
       .delete()
-      .match({ file_path: filePath });
+      .eq('file_path', filePath);
 
     if (dbError) {
-      console.error('數據庫刪除錯誤:', dbError);
-      throw new Error(`數據庫刪除失敗: ${dbError.message}`);
+      throw new Error(`無法刪除資料: ${dbError.message}`);
     }
 
-    console.log('數據庫記錄刪除成功');
     return true;
   } catch (error) {
-    console.error('刪除過程中發生錯誤:', error);
+    console.error('刪除失敗:', error);
     throw error;
   }
 } 

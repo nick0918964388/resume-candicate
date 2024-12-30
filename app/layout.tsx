@@ -5,8 +5,8 @@ import './globals.css';
 const inter = Inter({ subsets: ['latin'] });
 
 export const metadata: Metadata = {
-  title: '简历分析系统',
-  description: '使用 AI 技术分析和筛选简历的智能系统',
+  title: 'SCO AI履歷分析系統',
+  description: '使用 AI 技術分析和篩選履歷的智能系統',
 };
 
 export default function RootLayout({

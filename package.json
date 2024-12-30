@@ -3,10 +3,10 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev",
-    "build": "next build",
-    "start": "next start",
-    "lint": "next lint"
+    "dev": "NODE_ENV=development next dev",
+    "build": "NODE_ENV=production next build",
+    "start": "NODE_ENV=production next start",
+    "test": "NODE_ENV=test jest"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.9.1",
@@ -40,6 +40,7 @@
     "zod": "^3.24.1"
   },
   "devDependencies": {
+    "@types/lodash": "^4.17.13",
     "@types/node": "^20",
     "@types/pdfjs-dist": "^2.10.378",
     "@types/react": "^18",
