@@ -20,6 +20,7 @@ import { Progress } from "@/components/ui/progress";
 import ExpandableText from '@/components/ExpandableText';
 import { getAIRecommendations } from '@/lib/openAIClient';
 import { createProject, getAllProjects, Project, deleteProject } from '@/lib/services/project';
+import { generateInterviewQuestions } from '@/lib/openAIClient';
 
 interface AnalysisResult {
   id: string;
@@ -38,6 +39,7 @@ interface AnalysisResult {
   selected_note: string | null;
   analyzed_at?: string;
   display_name?: string;
+  resume_projects?: string;
 }
 
 // 添加在檔案開頭的介面定義部分
@@ -136,6 +138,11 @@ export default function Home() {
   const [isLoading, setIsLoading] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [projectToDelete, setProjectToDelete] = useState<Project | null>(null);
+
+  // 在現有的 state 定義中添加
+  const [showInterviewQuestions, setShowInterviewQuestions] = useState<string | null>(null);
+  const [interviewQuestions, setInterviewQuestions] = useState<any>(null);
+  const [isGeneratingQuestions, setIsGeneratingQuestions] = useState(false);
 
   // 在頁面載入時獲取專案列表
   useEffect(() => {
@@ -626,6 +633,59 @@ export default function Home() {
       alert('刪除專案失敗，請重試');
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  // 修改處理函數
+  const handleGenerateQuestions = async (candidate: any) => {
+    try {
+      // 清除原有的問題
+      setInterviewQuestions(null);
+      setIsGeneratingQuestions(true);
+      setShowInterviewQuestions(candidate.name);
+      
+      // 直接使用傳入的推薦候選人資料
+      const candidateInfo = {
+        skills: candidate.skills || candidate.resume_tech_skills || '',
+        experience: candidate.experience || candidate.resume_experience || '',
+        education: candidate.education || candidate.resume_education || '',
+        projects: candidate.projects || candidate.resume_projects || ''
+      };
+
+      // 如果沒有足夠的資料，嘗試從 finalCandidates 中查找
+      if (!candidateInfo.skills && !candidateInfo.experience && !candidateInfo.education) {
+        const fullCandidate = finalCandidates.find(c => 
+          c.resume_name === candidate.name || 
+          c.display_name === candidate.name
+        );
+        
+        if (fullCandidate) {
+          candidateInfo.skills = fullCandidate.resume_tech_skills || '';
+          candidateInfo.experience = fullCandidate.resume_experience || '';
+          candidateInfo.education = fullCandidate.resume_education || '';
+          candidateInfo.projects = fullCandidate.resume_projects || '';
+        }
+      }
+
+      // 檢查是否有足夠的資料進行分析
+      if (!candidateInfo.skills && !candidateInfo.experience && !candidateInfo.education) {
+        throw new Error('候選人資料不完整，無法生成面試問題');
+      }
+
+      console.log('使用的候選人資料:', candidateInfo); // 添加日誌
+
+      await generateInterviewQuestions(
+        candidateInfo,
+        (progress) => {
+          console.log('收到新的問題:', progress);
+          setInterviewQuestions(progress);
+        }
+      );
+    } catch (error) {
+      console.error('生成面試問題失敗:', error);
+      alert(error instanceof Error ? error.message : '生成面試問題時發生錯誤，請稍後再試');
+    } finally {
+      setIsGeneratingQuestions(false);
     }
   };
 
@@ -1525,6 +1585,70 @@ export default function Home() {
                                 </ul>
                               </div>
                             )}
+
+                            {/* 在推薦候選人卡片中添加按鈕和問題顯示部分 */}
+                            <div key={index} className="border rounded-lg p-4">
+                              {/* ... 現有的候選人資訊 ... */}
+                              
+                              {/* 添加生成問題按鈕 */}
+                              <div className="mt-4 flex justify-end">
+                                <button
+                                  onClick={() => {
+                                    // 找到完整的候選人資料
+                                    const candidateData = finalCandidates.find(c => 
+                                      c.resume_name === rec.name || 
+                                      c.display_name === rec.name
+                                    ) || rec;  // 如果找不到，使用推薦資料
+                                    
+                                    handleGenerateQuestions(candidateData);
+                                  }}
+                                  className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors"
+                                  disabled={isGeneratingQuestions && showInterviewQuestions === rec.name}
+                                >
+                                  {isGeneratingQuestions && showInterviewQuestions === rec.name ? (
+                                    <span>生成問題中...</span>
+                                  ) : (
+                                    <span>生成面試問題</span>
+                                  )}
+                                </button>
+                              </div>
+
+                              {/* 顯示面試問題 */}
+                              {showInterviewQuestions === rec.name && (
+                                <div className="mt-4 bg-gray-50 p-4 rounded-md">
+                                  <h4 className="text-lg font-medium mb-3">建議面試問題：</h4>
+                                  
+                                  {isGeneratingQuestions && (!interviewQuestions || !interviewQuestions.questions?.length) ? (
+                                    // 初始 Loading 狀態
+                                    <div className="flex flex-col items-center justify-center py-4">
+                                      <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500 mb-2"></div>
+                                      <p className="text-gray-600">正在生成面試問題...</p>
+                                    </div>
+                                  ) : interviewQuestions?.questions?.length > 0 ? (
+                                    // 顯示問題（包括正在生成的）
+                                    <div className="space-y-4">
+                                      {interviewQuestions.questions.map((q: any, i: number) => (
+                                        <div key={i} className="border-l-4 border-blue-500 pl-4">
+                                          <p className="font-medium text-gray-800">Q{i + 1}: {q.question}</p>
+                                          <p className="text-sm text-gray-600 mt-1">
+                                            <span className="font-medium">目的：</span> {q.purpose}
+                                          </p>
+                                          <p className="text-sm text-gray-600 mt-1">
+                                            <span className="font-medium">期望回答重點：</span> {q.expectedAnswer}
+                                          </p>
+                                        </div>
+                                      ))}
+                                      {isGeneratingQuestions && (
+                                        <div className="flex items-center text-gray-500 text-sm">
+                                          <div className="animate-pulse mr-2">●</div>
+                                          正在生成更多問題...
+                                        </div>
+                                      )}
+                                    </div>
+                                  ) : null}
+                                </div>
+                              )}
+                            </div>
                           </div>
                         ))}
                     </div>
