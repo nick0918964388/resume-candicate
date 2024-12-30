@@ -144,4 +144,33 @@ export async function deleteResume(filePath: string) {
     console.error('刪除失敗:', error);
     throw error;
   }
+}
+
+export async function downloadResume(filePath: string) {
+  try {
+    const { data, error } = await supabase.storage
+      .from('resumes')  // 使用存放履歷的 bucket 名稱
+      .download(filePath)
+    
+    if (error) {
+      throw error
+    }
+
+    // 建立下載連結
+    const url = window.URL.createObjectURL(data)
+    const link = document.createElement('a')
+    link.href = url
+    link.download = filePath.split('/').pop() || 'resume.pdf' // 設定下載時的檔名
+    document.body.appendChild(link)
+    link.click()
+    
+    // 清理
+    window.URL.revokeObjectURL(url)
+    document.body.removeChild(link)
+
+    return { success: true }
+  } catch (error) {
+    console.error('下載履歷失敗:', error)
+    return { success: false, error }
+  }
 } 

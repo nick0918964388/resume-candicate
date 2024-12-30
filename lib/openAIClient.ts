@@ -67,7 +67,7 @@ export async function analyzeResume(
     `;
 
     const response = await openai.chat.completions.create({
-      model: "gpt-4-turbo-preview",
+      model: "gpt-4o-mini",
       messages: [
         {
           role: "system",
@@ -138,7 +138,7 @@ export async function getAIRecommendations(candidates: any[], requirements: stri
 
   try {
     const response = await openai.chat.completions.create({
-      model: "gpt-4",
+      model: "gpt-4o-mini",
       messages: [{ role: "user", content: prompt }],
       temperature: 0.7,
     });
@@ -198,7 +198,7 @@ export async function generateInterviewQuestions(
         ]
       }
     `;
-
+    console.log('prompt:', prompt);
     const response = await openai.chat.completions.create({
       model: "gpt-4o-mini",
       messages: [
@@ -214,7 +214,7 @@ export async function generateInterviewQuestions(
       temperature: 0.7,
       response_format: { type: "json_object" }
     });
-
+    console.log('response:', response);
     const content = response.choices[0].message.content;
     if (!content) {
       throw new Error('API 回應內容為空');

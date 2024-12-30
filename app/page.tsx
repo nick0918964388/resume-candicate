@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
 import ResumeUploader from '@/components/ResumeUploader';
-import { uploadResume, deleteResume } from '@/lib/services/upload';
+import { uploadResume, deleteResume, downloadResume } from '@/lib/services/upload';
 import { 
   analyzeAllResumes, 
   getAnalysisResults, 
@@ -351,8 +351,17 @@ export default function Home() {
     }
   };
 
-  const handleViewResume = (url: string) => {
-    window.open(url, '_blank');
+  // 修改 handleViewResume 函數為 handleDownloadResume
+  const handleDownloadResume = async (filePath: string) => {
+    try {
+      const result = await downloadResume(filePath);
+      if (!result.success) {
+        throw result.error;
+      }
+    } catch (error) {
+      console.error('下載履歷失敗:', error);
+      alert('下載失敗，請重試');
+    }
   };
 
   // 添加刪除處理函數
@@ -636,37 +645,73 @@ export default function Home() {
     }
   };
 
-  // 修改處理函數
+  // 修改 handleGenerateQuestions 函數
   const handleGenerateQuestions = async (candidate: any) => {
     try {
       setInterviewQuestions(null);
       setIsGeneratingQuestions(true);
-      setShowInterviewQuestions(candidate.name);
       
-      // 先嘗試從推薦資料中獲取
-      const candidateInfo = {
-        skills: candidate.resume_tech_skills || '',
-        experience: candidate.resume_experience || '',
-        education: candidate.resume_education || '',
-        projects: candidate.resume_projects || ''
-      };
+      // 先取得完整的候選人資料
+      let fullCandidate = null;
+      console.log('candidate:', candidate);
+      // 如果是從推薦列表點擊的
+      if (candidate.name) {
+        // 標準化名稱比對
+        const normalizeFileName = (name: string) => {
+          return name
+            .replace(/\.pdf$/i, '')  // 移除 .pdf 副檔名
+            .replace(/\s+/g, '')     // 移除空格
+            .toLowerCase();          // 轉小寫
+        };
 
-      // 如果沒有資料，嘗試從 finalCandidates 中查找完整資料
-      if (!candidateInfo.skills && !candidateInfo.experience && !candidateInfo.education) {
-        const fullCandidate = finalCandidates.find(c => 
-          c.resume_name === candidate.name || 
-          c.display_name === candidate.name
-        );
-        
-        if (fullCandidate) {
-          candidateInfo.skills = fullCandidate.resume_tech_skills || '';
-          candidateInfo.experience = fullCandidate.resume_experience || '';
-          candidateInfo.education = fullCandidate.resume_education || '';
-          candidateInfo.projects = fullCandidate.resume_projects || '';
+        const targetName = normalizeFileName(candidate.name);
+        console.log('finalCandidates:', finalCandidates);
+        fullCandidate = finalCandidates.find(c => {
+          const resumeName = normalizeFileName(c.resume_name);
+          const displayName = c.display_name ? normalizeFileName(c.display_name) : '';
+          
+          // 除了完全匹配外，也檢查是否包含目標名稱
+          return resumeName === targetName || 
+                 displayName === targetName || 
+                 resumeName.includes(targetName) || 
+                 displayName.includes(targetName);
+        });
+        console.log('fullCandidate:', fullCandidate);
+        // 如果還是找不到，輸出一些調試信息
+        if (!fullCandidate) {
+          console.log('目標名稱:', targetName);
+          console.log('可用的候選人名稱:', finalCandidates.map(c => ({
+            resume_name: normalizeFileName(c.resume_name),
+            display_name: c.display_name ? normalizeFileName(c.display_name) : ''
+          })));
         }
+      } else {
+        // 如果已經是完整的候選人資料
+        fullCandidate = candidate;
+        console.log('fullCandidate:', fullCandidate);
       }
 
-      // 檢查是否有足夠的資料進行分析
+      if (!fullCandidate) {
+        throw new Error('找不到候選人完整資料');
+      }
+
+      // 設置要顯示的名稱（使用原始推薦中的名稱）
+      console.log('candidate.name:', candidate.name);
+      console.log('fullCandidate.display_name:', fullCandidate.display_name);
+      console.log('fullCandidate.resume_name:', fullCandidate.resume_name);
+      // 移除.pdf結尾
+      const displayName = (candidate.name || '').replace(/\.pdf$/i, '');
+      setShowInterviewQuestions(displayName || candidate.name || fullCandidate.display_name || fullCandidate.resume_name);
+
+      // 準備候選人資料
+      const candidateInfo = {
+        skills: fullCandidate.resume_tech_skills || '',
+        experience: fullCandidate.resume_experience || '',
+        education: fullCandidate.resume_education || '',
+        projects: fullCandidate.resume_projects || ''
+      };
+
+      // 驗證資料
       const hasValidData = Object.values(candidateInfo).some(value => 
         value && value.trim() !== '' && value !== '無'
       );
@@ -675,12 +720,10 @@ export default function Home() {
         throw new Error('候選人資料不完整，無法生成面試問題');
       }
 
-      console.log('使用的候選人資料:', candidateInfo);
-
+      // 生成面試問題
       const result = await generateInterviewQuestions(
         candidateInfo,
         (progress) => {
-          console.log('收到新的問題:', progress);
           if (progress && progress.questions) {
             setInterviewQuestions(progress);
           }
@@ -873,10 +916,10 @@ export default function Home() {
                           </td>
                           <td className="px-6 py-4 whitespace-nowrap space-x-2">
                             <button
-                              onClick={() => handleViewResume(resume.file_url)}
+                              onClick={() => handleDownloadResume(resume.file_path)}
                               className="text-blue-600 hover:text-blue-800 mr-2"
                             >
-                              查看
+                              下載
                             </button>
                             <button
                               onClick={() => handleDeleteResume(resume)}
@@ -1240,10 +1283,10 @@ export default function Home() {
                           </td>
                           <td className="px-6 py-4 whitespace-nowrap space-x-2">
                             <button
-                              onClick={() => handleViewResume(result.file_url)}
+                              onClick={() => handleDownloadResume(result.file_path)}
                               className="text-blue-600 hover:text-blue-800"
                             >
-                              查看履歷
+                              下載履歷
                             </button>
                             <button
                               onClick={() => handleRemoveCandidate(result.id)}
@@ -1483,10 +1526,10 @@ export default function Home() {
                           </td>
                           <td className="px-6 py-4 whitespace-nowrap space-x-2">
                             <button
-                              onClick={() => handleViewResume(candidate.file_url)}
+                              onClick={() => handleDownloadResume(candidate.file_path)}
                           className="text-blue-600 hover:text-blue-800"
                         >
-                              查看履歷
+                              下載履歷
                             </button>
                             <button
                               onClick={() => handleRemoveCandidate(candidate.id)}
@@ -1602,7 +1645,10 @@ export default function Home() {
                                 <button
                                   onClick={() => {
                                     // 從 finalCandidates 中找到完整的候選人資料
-                                    const cleanRecName = rec.name.replace(/\.pdf$/, ''); // 移除 .pdf 副檔名
+                                    let cleanRecName = rec.name.replace(/\.pdf$/, ''); // 移除 .pdf 副檔名
+                                    // 移除"候選人 "開頭的文字
+                                    cleanRecName = cleanRecName.replace(/^候選人\s+/, '');
+                                    console.log('cleanRecName:', cleanRecName);
                                     const fullCandidate = finalCandidates.find(c => {
                                       const cleanResumeName = c.resume_name.replace(/\.pdf$/, '');
                                       const cleanDisplayName = c.display_name?.replace(/\.pdf$/, '') || '';
@@ -1640,18 +1686,16 @@ export default function Home() {
                               </div>
 
                               {/* 顯示面試問題 */}
-                              {showInterviewQuestions === rec.name && (
+                              {showInterviewQuestions === rec.name.replace(/^候選人\s+/, '').replace(/\.pdf$/, '') && (
                                 <div className="mt-4 bg-gray-50 p-4 rounded-md">
                                   <h4 className="text-lg font-medium mb-3">建議面試問題：</h4>
                                   
                                   {isGeneratingQuestions ? (
-                                    // Loading 狀態
                                     <div className="flex flex-col items-center justify-center py-4">
                                       <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500 mb-2"></div>
                                       <p className="text-gray-600">正在生成面試問題...</p>
                                     </div>
                                   ) : interviewQuestions?.questions ? (
-                                    // 顯示問題
                                     <div className="space-y-4">
                                       {interviewQuestions.questions.map((q: any, i: number) => (
                                         <div key={i} className="border-l-4 border-blue-500 pl-4">
@@ -1665,7 +1709,9 @@ export default function Home() {
                                         </div>
                                       ))}
                                     </div>
-                                  ) : null}
+                                  ) : (
+                                    <p className="text-gray-600">尚未生成面試問題</p>
+                                  )}
                                 </div>
                               )}
                             </div>
@@ -1765,10 +1811,10 @@ export default function Home() {
                                 </td>
                                 <td className="px-6 py-4 whitespace-nowrap">
                                   <button
-                                    onClick={() => handleViewResume(candidate.file_url)}
+                                    onClick={() => handleDownloadResume(candidate.file_path)}
                                     className="text-blue-600 hover:text-blue-800"
                                   >
-                                    查看履歷
+                                    下載履歷
                                   </button>
                                 </td>
                               </tr>
