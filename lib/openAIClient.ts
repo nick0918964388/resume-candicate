@@ -167,31 +167,44 @@ export async function generateInterviewQuestions(
   onProgress?: (question: any) => void
 ) {
   try {
+    // 檢查是否至少有一項資料不為空
+    const hasData = Object.values(candidateInfo).some(value => 
+      value && value.trim() !== '' && value !== '無'
+    );
+
+    if (!hasData) {
+      throw new Error('候選人資料不完整，無法生成面試問題');
+    }
+
     const prompt = `
       請根據以下候選人的資料，生成5個適合在面試時詢問的問題。
       這些問題應該要能夠深入了解候選人的技能、經驗和解決問題的能力。
       請使用繁體中文回覆。
 
       候選人資料：
-      技能：${candidateInfo.skills || '無'}
-      工作經驗：${candidateInfo.experience || '無'}
-      教育背景：${candidateInfo.education || '無'}
+      ${candidateInfo.skills ? `技能：${candidateInfo.skills}` : ''}
+      ${candidateInfo.experience ? `工作經驗：${candidateInfo.experience}` : ''}
+      ${candidateInfo.education ? `教育背景：${candidateInfo.education}` : ''}
       ${candidateInfo.projects ? `專案經驗：${candidateInfo.projects}` : ''}
 
-      請以下列格式回覆每個問題：
+      請以下列 JSON 格式回覆，需包含5個問題：
       {
-        "question": "問題內容",
-        "purpose": "問這個問題的目的",
-        "expectedAnswer": "期望得到的回答重點"
+        "questions": [
+          {
+            "question": "問題內容",
+            "purpose": "問這個問題的目的",
+            "expectedAnswer": "期望得到的回答重點"
+          }
+        ]
       }
     `;
 
     const response = await openai.chat.completions.create({
-      model: "gpt-4",
+      model: "gpt-4o-mini",
       messages: [
         {
           role: "system",
-          content: "你是一位資深的技術面試官，擅長設計有深度的面試問題。請一次生成一個問題，確保每個問題都是完整的 JSON 格式。"
+          content: "你是一位資深的技術面試官，擅長設計有深度的面試問題。請確保回覆是完整的 JSON 格式。"
         },
         {
           role: "user",
@@ -199,39 +212,27 @@ export async function generateInterviewQuestions(
         }
       ],
       temperature: 0.7,
-      stream: true
+      response_format: { type: "json_object" }
     });
 
-    const questions: any[] = [];
-    let currentContent = '';
-
-    for await (const chunk of response) {
-      if (chunk.choices[0]?.delta?.content) {
-        currentContent += chunk.choices[0].delta.content;
-        
-        // 當收到完整的 JSON 物件時
-        if (currentContent.includes('}')) {
-          try {
-            const questionObj = JSON.parse(currentContent);
-            questions.push(questionObj);
-            
-            // 呼叫進度回調
-            if (onProgress) {
-              onProgress({
-                questions: questions
-              });
-            }
-            
-            // 重置內容
-            currentContent = '';
-          } catch (e) {
-            // JSON 還不完整，繼續累積
-          }
-        }
-      }
+    const content = response.choices[0].message.content;
+    if (!content) {
+      throw new Error('API 回應內容為空');
     }
 
-    return { questions };
+    const result = JSON.parse(content);
+    
+    // 驗證回應格式
+    if (!result.questions || !Array.isArray(result.questions)) {
+      throw new Error('回應格式無效');
+    }
+
+    // 回調進度
+    if (onProgress) {
+      onProgress(result);
+    }
+
+    return result;
   } catch (error) {
     console.error('生成面試問題時發生錯誤:', error);
     throw error;
