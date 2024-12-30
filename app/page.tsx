@@ -22,6 +22,7 @@ import { getAIRecommendations } from '@/lib/openAIClient';
 import { createProject, getAllProjects, Project, deleteProject } from '@/lib/services/project';
 import { generateInterviewQuestions } from '@/lib/openAIClient';
 
+
 interface AnalysisResult {
   id: string;
   resume_name: string;
@@ -741,65 +742,43 @@ export default function Home() {
 
   return (
     <main className="min-h-screen bg-gray-50 p-8">
-      {/* 修改標題區域 */}
-      <div className="flex flex-col space-y-6 mb-8">
-        <h1 className="text-3xl font-bold text-gray-800">SCO AI履歷分析系統</h1>
-        
-        {/* 專案選擇和操作 */}
-        <div className="flex justify-between items-center">
-          <div className="flex items-center space-x-4">
-            <select
-              value={currentProject?.id || ''}
-              onChange={(e) => handleProjectChange(e.target.value)}
-              className="px-4 py-2 border rounded-md"
-              disabled={isLoading}
-            >
-              <option value="">選擇專案</option>
-              {projects.map(project => (
-                <option key={project.id} value={project.id}>
-                  {project.project_name}
-                </option>
-              ))}
-            </select>
-            {currentProject && (
-              <button
-                onClick={() => {
-                  setProjectToDelete(currentProject);
-                  setShowDeleteConfirm(true);
-                }}
-                className="px-4 py-2 text-red-600 hover:text-red-800"
-                disabled={isLoading}
-              >
-                刪除專案
-              </button>
-            )}
+      {/* 專案選擇和操作 */}
+      <div className="flex justify-between items-center mb-8">
+        <div className="flex items-center space-x-4">
+          <select
+            value={currentProject?.id || ''}
+            onChange={(e) => handleProjectChange(e.target.value)}
+            className="px-4 py-2 border rounded-md"
+            disabled={isLoading}
+          >
+            <option value="">選擇專案</option>
+            {projects.map(project => (
+              <option key={project.id} value={project.id}>
+                {project.project_name}
+              </option>
+            ))}
+          </select>
+          {currentProject && (
             <button
-              onClick={() => setShowNewProjectModal(true)}
-              className="px-4 py-2 bg-blue-500 text-white rounded-md hover:bg-blue-600"
+              onClick={() => {
+                setProjectToDelete(currentProject);
+                setShowDeleteConfirm(true);
+              }}
+              className="px-4 py-2 text-red-600 hover:text-red-800"
               disabled={isLoading}
             >
-              新增專案
+              刪除專案
             </button>
-          </div>
+          )}
+          <button
+            onClick={() => setShowNewProjectModal(true)}
+            className="px-4 py-2 bg-blue-500 text-white rounded-md hover:bg-blue-600"
+            disabled={isLoading}
+          >
+            新增專案
+          </button>
         </div>
       </div>
-
-      {/* Loading Skeleton */}
-      {isLoading && (
-        <div className="space-y-4 animate-pulse">
-          <div className="h-8 bg-gray-200 rounded w-1/4"></div>
-          <div className="grid grid-cols-3 gap-4">
-            <div className="h-24 bg-gray-200 rounded"></div>
-            <div className="h-24 bg-gray-200 rounded"></div>
-            <div className="h-24 bg-gray-200 rounded"></div>
-          </div>
-          <div className="h-32 bg-gray-200 rounded"></div>
-          <div className="grid grid-cols-2 gap-4">
-            <div className="h-48 bg-gray-200 rounded"></div>
-            <div className="h-48 bg-gray-200 rounded"></div>
-          </div>
-            </div>
-          )}
 
       {/* 刪除確認 Modal */}
       {showDeleteConfirm && (
