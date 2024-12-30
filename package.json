@@ -3,10 +3,10 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "NODE_ENV=development next dev",
-    "build": "NODE_ENV=production next build",
-    "start": "NODE_ENV=production next start",
-    "test": "NODE_ENV=test jest"
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "test": "test"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.9.1",

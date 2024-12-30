@@ -78,7 +78,7 @@ export async function POST(request: Request) {
         if (!Array.isArray(rec.concerns)) throw new Error(`第 ${index + 1} 個推薦缺少 concerns 陣列`);
       });
 
-    } catch (parseError) {
+    } catch (parseError: any) {
       console.error('解析回應失敗:', parseError);
       console.error('原始回應:', response.choices[0].message.content);
       return NextResponse.json(
