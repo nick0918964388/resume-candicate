@@ -82,7 +82,12 @@ export async function analyzeResume(
       temperature: 0.5,
     });
 
-    const result = JSON.parse(response.choices[0].message.content);
+    const content = response.choices[0].message.content;
+    if (!content) {
+      throw new Error('API 回應內容為空');
+    }
+
+    const result = JSON.parse(content);
     
     // 驗證回應格式
     if (!result.score || !Array.isArray(result.skills)) {
@@ -138,7 +143,12 @@ export async function getAIRecommendations(candidates: any[], requirements: stri
       temperature: 0.7,
     });
 
-    const result = JSON.parse(response.choices[0].message.content);
+    const content = response.choices[0].message.content;
+    if (!content) {
+      throw new Error('API 回應內容為空');
+    }
+
+    const result = JSON.parse(content);
     return result;
   } catch (error) {
     console.error('AI推薦分析失敗:', error);
